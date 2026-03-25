@@ -1,0 +1,40 @@
+server:
+  env_name: qwen
+  port: ${PORT:8001}
+  auth:
+    enabled: true
+    secret: ${PGPT_AUTH_SECRET:change-me}
+
+ui:
+  enabled: true
+  path: /
+  default_mode: "RAG"
+
+llm:
+  mode: openailike
+  prompt_style: default
+  max_new_tokens: 2048
+  context_window: 8192
+  temperature: 0.1
+
+embedding:
+  mode: huggingface
+  ingest_mode: simple
+  embed_dim: 768
+
+huggingface:
+  embedding_hf_model_name: nomic-ai/nomic-embed-text-v1.5
+  access_token: ${HF_TOKEN:}
+  trust_remote_code: true
+
+vectorstore:
+  database: qdrant
+
+qdrant:
+  path: local_data/private_gpt/qdrant
+
+openai:
+  api_base: https://dashscope.aliyuncs.com/compatible-mode/v1
+  api_key: ${DASHSCOPE_API_KEY:}
+  model: qwen3-30b-a3b-instruct-2507      # 可换更大/更快的千问型号
+  
