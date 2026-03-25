@@ -64,14 +64,14 @@ vectorstore:
   database: "qdrant"  # 或 "postgres", "chroma", "milvus" 等
 ```
 
-### 3. 鍚姩鍚庣鏈嶅姟
+### 3. 启动前端开发服务器
 
 ```bash
 # 方式 1: 使用 Poetry
 poetry run python -m private_gpt
 
 # 说明：默认 profile（settings.yaml）使用 llamacpp，本机必须存在 GGUF 模型文件（通常放在项目根目录的 models/ 下）。
-# 如果你要使用千问（settings-qwen.yaml），推荐先编辑 scripts\run_backend_qwen.cmd 中的占位符：
+# 如果您使用千问（settings-qwen.yaml），推荐先编辑 scripts\run_backend_qwen.cmd 中的占位符：
 #   DASHSCOPE_API_KEY=<your_dashscope_api_key>
 #   HF_TOKEN=<your_huggingface_token>
 #   PGPT_AUTH_SECRET=<your_auth_secret>
@@ -88,7 +88,7 @@ poetry run uvicorn private_gpt.main:app --host 0.0.0.0 --port 8001
 
 ## 数据库与登录（Postgres + RBAC）
 
-系统默认使用 JSON 指标库，如需启用 Postgres（推荐用于课设数据库要求），请准备本地 Postgres 并设置以下环境变量：
+系统默认使用 JSON 指标库，如需启用 Postgres，请准备本地 Postgres 并设置以下环境变量：
 
 ```bash
 set PGPT_INDICATOR_STORE=postgres
@@ -151,7 +151,7 @@ poetry install
 poetry install -E llms-openai-like -E embeddings-huggingface -E vector-stores-qdrant -E ui
 
 # （推荐）千问模型实例
-# 请先编辑 scripts\run_backend_qwen.cmd，将其中的占位符替换为你自己的密钥与认证配置，然后运行：
+# 请先编辑 scripts\run_backend_qwen.cmd，将其中的占位符替换为您自己的密钥与认证配置，然后运行：
 scripts\run_backend_qwen.cmd
 
 # 或通过以下命令设置：
