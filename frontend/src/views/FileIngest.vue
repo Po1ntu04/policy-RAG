@@ -130,6 +130,12 @@
                         >
                           {{ getStatusText(item.parseStatus) }}
                         </a-tag>
+                        <a-tag color="blue" class="status-tag">
+                          向量库：{{ getSyncStatusText(item.vectorStatus || 'success') }}
+                        </a-tag>
+                        <a-tag :color="getSyncStatusColor(item.relationStatus)" class="status-tag">
+                          关系库：{{ getSyncStatusText(item.relationStatus) }}
+                        </a-tag>
                       </div>
                     </div>
                     
@@ -249,6 +255,13 @@
                     >
                       清空列表
                     </a-button>
+                    <a-button
+                      v-if="canReconcile"
+                      :loading="reconciling"
+                      @click="reconcileFiles"
+                    >
+                      补偿同步
+                    </a-button>
                   </a-space>
                 </div>
               </div>
@@ -298,6 +311,12 @@
                           <span class="upload-time">{{ formatTime(item.uploadTime) }}</span>
                           <a-divider type="vertical" />
                           <span class="file-size">{{ formatFileSize(item.size) }}</span>
+                        </div>
+                        <div class="sync-status-row">
+                          <a-tag color="blue">向量库：{{ getSyncStatusText(item.vectorStatus || 'success') }}</a-tag>
+                          <a-tag :color="getSyncStatusColor(item.relationStatus)">
+                            关系库：{{ getSyncStatusText(item.relationStatus) }}
+                          </a-tag>
                         </div>
                         
                         <div class="progress-section">
@@ -369,6 +388,7 @@ export default {
     // 响应式数据
     const uploadFileList = ref([])
     const uploading = ref(false)
+    const reconciling = ref(false)
     const refreshing = ref(false)
     const selectedFile = ref(null)
     const showParsePanel = ref(false)
@@ -391,6 +411,7 @@ export default {
     // 计算属性
     const files = computed(() => store.state.fileIngest.files)
     const isAdmin = computed(() => store.getters['auth/hasRole']('admin'))
+    const canReconcile = computed(() => isAdmin.value || store.getters['auth/hasRole']('staff'))
     const fileStats = computed(() => store.getters['fileIngest/fileStats'])
     const filteredFiles = computed(() => store.getters['fileIngest/filteredFiles'])
     
@@ -431,6 +452,28 @@ export default {
         pending: '等待中',
         parsing: '解析中',
         completed: '已完成',
+        failed: '失败'
+      }
+      return textMap[status] || '未知'
+    }
+
+    const getSyncStatusColor = (status) => {
+      const colorMap = {
+        success: 'success',
+        partial_failed: 'warning',
+        pending: 'default',
+        disabled: 'default',
+        failed: 'error'
+      }
+      return colorMap[status] || 'default'
+    }
+
+    const getSyncStatusText = (status) => {
+      const textMap = {
+        success: '已同步',
+        partial_failed: '部分失败',
+        pending: '待同步',
+        disabled: '未启用',
         failed: '失败'
       }
       return textMap[status] || '未知'
@@ -541,7 +584,7 @@ export default {
       try {
         const files = uploadFileList.value.map(item => item.originFileObj)
         
-        await store.dispatch('fileIngest/batchUploadFiles', {
+        const results = await store.dispatch('fileIngest/batchUploadFiles', {
           files,
           options: {
             department: uploadConfig.value.department,
@@ -554,6 +597,10 @@ export default {
         })
 
         message.success('文件上传成功，正在解析中...')
+        const partialCount = results.filter(item => item.relationStatus === 'partial_failed').length
+        if (partialCount > 0) {
+          message.warning(`已上传 ${results.length} 个文件，其中 ${partialCount} 个关系库同步失败，可点击补偿同步`)
+        }
         uploadFileList.value = []
         
       } catch (error) {
@@ -569,6 +616,26 @@ export default {
     }
 
     // 文件管理相关
+    const reconcileFiles = async () => {
+      reconciling.value = true
+      try {
+        const result = await store.dispatch('fileIngest/reconcileIngest', {
+          department: uploadConfig.value.department,
+          publishYear: uploadConfig.value.publishYear
+        })
+        if (result.sync_status === 'partial_failed') {
+          message.warning('补偿同步部分失败：' + (result.sync_error || '请查看后端日志'))
+        } else {
+          message.success(`补偿同步完成，已同步 ${result.synced_count || 0} 条文档引用`)
+        }
+      } catch (error) {
+        console.error('补偿同步失败:', error)
+        message.error('补偿同步失败：' + error.message)
+      } finally {
+        reconciling.value = false
+      }
+    }
+
     const selectFile = (file) => {
       selectedFile.value = file
     }
@@ -660,6 +727,7 @@ export default {
       // 响应式数据
       uploadFileList,
       uploading,
+      reconciling,
       refreshing,
       selectedFile,
       showParsePanel,
@@ -667,6 +735,7 @@ export default {
       filterConditions,
       uploadConfig,
       isAdmin,
+      canReconcile,
       unitOptions,
       yearOptions,
 
@@ -681,6 +750,8 @@ export default {
       formatTime,
       getStatusColor,
       getStatusText,
+      getSyncStatusColor,
+      getSyncStatusText,
       getProgressLabel,
       getProgressPercent,
       getProgressStatus,
@@ -689,6 +760,7 @@ export default {
       handleDrop,
       startUpload,
       clearUploadList,
+      reconcileFiles,
       selectFile,
       deleteFile,
       refreshFileList,
@@ -972,6 +1044,10 @@ export default {
             font-size: 12px;
             color: #8c8c8c;
             margin-bottom: 12px;
+          }
+
+          .sync-status-row {
+            margin-bottom: 10px;
           }
           
           .progress-section {

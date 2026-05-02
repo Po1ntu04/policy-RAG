@@ -4,6 +4,9 @@
 # Keep essential repository files.
 !/.gitignore
 !/README.md
+!/LICENSE
+!/NOTICE
+!/.env.example
 !/pyproject.toml
 !/poetry.lock
 !/Makefile
@@ -28,20 +31,30 @@
 
 # Keep essential source directories.
 !/.docker/
+!/assets/
 !/db/
+!/documents/
 !/frontend/
 !/private_gpt/
 !/scripts/
+!/tests/
 
 # Allow files inside the kept directories.
 !/.docker/**
+!/assets/**
 !/db/**
 !/frontend/**
 !/private_gpt/**
 !/scripts/**
+!/tests/**
+!/documents/README.md
+!/documents/.gitkeep
 
 # Remove non-source or local-only files inside kept directories.
 db/README.md
+documents/**
+!documents/README.md
+!documents/.gitkeep
 frontend/node_modules/
 frontend/dist/
 frontend/.cache/

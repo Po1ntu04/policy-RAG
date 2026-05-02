@@ -1,0 +1,9 @@
+Policy-RAG
+
+This project adapts a PrivateGPT-style local RAG service into a government policy
+document platform with a Vue frontend, role-based access control, Postgres-backed
+policy metadata, indicator extraction, audit workflows, public interactions, and
+batch folder ingestion.
+
+The project is intended for course demonstration and local research use. Demo
+accounts and placeholder secrets must be replaced before any production use.

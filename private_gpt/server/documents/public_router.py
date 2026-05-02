@@ -213,7 +213,10 @@ def _build_filters(
     responsible_unit: Optional[str],
     responsible_department: Optional[str],
 ) -> tuple[str, list]:
-    where = []
+    where = [
+        "pd.status = 'published'",
+        "EXISTS (SELECT 1 FROM policy_doc_refs r WHERE r.policy_id = pd.policy_id)",
+    ]
     params: list = []
     if keyword:
         where.append("(pd.title ILIKE %s OR pd.file_name ILIKE %s)")
@@ -734,8 +737,12 @@ async def list_filters():
             cur.execute(
                 """
                 SELECT DISTINCT EXTRACT(YEAR FROM publish_date)::int
-                FROM policy_documents
+                FROM policy_documents pd
                 WHERE publish_date IS NOT NULL
+                  AND pd.status = 'published'
+                  AND EXISTS (
+                      SELECT 1 FROM policy_doc_refs r WHERE r.policy_id = pd.policy_id
+                  )
                 ORDER BY 1 DESC
                 """
             )
@@ -759,6 +766,10 @@ async def list_filters():
                 FROM policy_documents pd
                 JOIN orgs o ON o.org_id = pd.publisher_org_id
                 WHERE o.org_name IS NOT NULL
+                  AND pd.status = 'published'
+                  AND EXISTS (
+                      SELECT 1 FROM policy_doc_refs r WHERE r.policy_id = pd.policy_id
+                  )
                 ORDER BY o.org_name ASC
                 """
             )

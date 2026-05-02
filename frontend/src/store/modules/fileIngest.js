@@ -88,6 +88,8 @@ export default {
           const fileName = doc?.doc_metadata?.file_name || doc.doc_id
           const createdAt = doc?.doc_metadata?.created_at || null
           const fileSize = doc?.doc_metadata?.file_size || 0
+          const policySyncStatus = doc?.doc_metadata?.policy_sync_status || 'pending'
+          const policyId = doc?.doc_metadata?.policy_id || null
           if (!groupMap.has(fileName)) {
             groupMap.set(fileName, {
               id: fileName, // 使用文件名作为分组后的稳定ID
@@ -96,12 +98,19 @@ export default {
               uploadTime: createdAt,
               status: 'uploaded',
               parseStatus: 'completed',
+              vectorStatus: 'success',
+              relationStatus: policySyncStatus,
+              syncStatuses: [policySyncStatus],
+              policyIds: policyId ? [policyId] : [],
               metadata: {},
               docIds: [doc.doc_id]
             })
           } else {
             const item = groupMap.get(fileName)
             item.docIds.push(doc.doc_id)
+            item.syncStatuses.push(policySyncStatus)
+            if (policyId && !item.policyIds.includes(policyId)) item.policyIds.push(policyId)
+            item.relationStatus = item.syncStatuses.includes('pending') ? 'pending' : policySyncStatus
             // 取最大/最新的时间与最大文件大小（如果后端提供）
             item.uploadTime = item.uploadTime || createdAt
             item.size = Math.max(item.size || 0, fileSize || 0)
@@ -151,6 +160,11 @@ export default {
           id: result?.data?.[0]?.doc_id || tempFile.id,
           status: 'uploaded',
           parseStatus: 'completed',
+          vectorStatus: 'success',
+          relationStatus: result?.sync_status || result?.data?.[0]?.doc_metadata?.policy_sync_status || 'pending',
+          syncError: result?.sync_error || null,
+          docIds: (result?.data || []).map(doc => doc.doc_id),
+          policyIds: Object.values(result?.doc_policy_ids || {}),
           metadata: result?.data?.[0]?.doc_metadata
         }
         
@@ -206,6 +220,12 @@ export default {
     },
     
     // 触发解析
+    async reconcileIngest({ dispatch }, options = {}) {
+      const result = await ingestAPI.reconcile(options)
+      await dispatch('fetchFiles')
+      return result
+    },
+
     async triggerParse({ commit }, fileId) {
       try {
         commit('SET_PARSE_STATUS', { fileId, status: 'parsing' })

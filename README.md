@@ -1,118 +1,91 @@
-﻿# 项目启动指南
+# Policy-RAG
 
-政务文档智能处理系统是一个基于 FastAPI 的私有化 GPT 服务，支持多种 LLM 模型和向量数据库。本项目包含后端 API 服务和前端 Web 界面。
+面向政务公开与指标治理的 LLM + RAG + 数据库应用系统。项目在 PrivateGPT 风格的本地 RAG 服务基础上，补充了 Vue 前端、Qwen 调用、Qdrant 向量检索、Postgres 关系数据库、RBAC 权限、公开文件互动、指标抽取、审计评估和本地批量文档入库能力。
+
+> 本项目用于课程设计和本地演示。默认账号、占位密钥和示例配置不能直接用于生产环境。
+
+![System Structure](assets/architecture/structure.png)
+
+## 核心能力
+
+- **智能问答**：基于 Qdrant 检索政务文件片段，将证据上下文交给 Qwen 生成可追溯回答。
+- **公开文件门户**：按年份、责任单位、热度、点赞、收藏和关键词筛选政策文件，支持评论、提问政府、回答公众。
+- **指标抽取与管理**：从政策文件中抽取年度、一级指标、二级指标、评分细则、分值、目标来源、完成时限、责任单位和责任处室，并写入 Postgres。
+- **审计评估**：面向指标完成情况记录审计结论、证据和建议，保留可 JOIN、可统计的结构化数据。
+- **批量文档入库**：网页上传与本地目录递归入库并存。本地 `documents/` 支持 dry-run、增量 manifest、metadata 推断和 watch。
+- **权限控制**：内置 `admin`、`staff`、`leader`、`public` 四类角色，区分上传、删除、指标管理、审计与互动权限。
+
+## 界面预览
+
+| 智能问答 | 公开文件 |
+| --- | --- |
+| ![Smart Chat](assets/screenshots/ui_smart_chat.png) | ![Public Docs](assets/screenshots/ui_public_docs.png) |
+
+| 文件详情与互动 | 指标管理 |
+| --- | --- |
+| ![Public Detail](assets/screenshots/ui_public_detail.png) | ![Indicators](assets/screenshots/ui_indicators.png) |
+
+| 文件入库 | 审计评估 |
+| --- | --- |
+| ![Upload](assets/screenshots/ui_docupload.png) | ![Audit](assets/screenshots/ui_audit.png) |
+
+## 技术栈
+
+| 层次 | 技术 |
+| --- | --- |
+| 前端 | Vue 3, Vue Router, Vuex, Ant Design Vue, Axios |
+| 后端 | FastAPI, Pydantic, LlamaIndex, Poetry |
+| LLM | Qwen via DashScope OpenAI-compatible API |
+| 向量检索 | Qdrant |
+| 关系数据库 | PostgreSQL, SQL schema, RBAC, policy metadata, indicators, audits, comments |
+| 文档入库 | Web upload, recursive local folder ingestion, manifest-based incremental sync |
 
 ## 项目结构
 
+```text
+policy-RAG/
+├── assets/                 # README 架构图与真实界面截图
+├── db/                     # Postgres schema、seed 和查询示例
+├── documents/              # 本地批量入库目录；真实文档默认不上传
+├── frontend/               # Vue 前端
+├── private_gpt/            # FastAPI 后端与 RAG 服务
+├── scripts/                # 启动脚本与批量入库脚本
+├── tests/                  # 后端基础测试
+├── settings*.yaml          # profile 配置文件，当前保留在根目录以兼容 loader
+├── .env.example            # 本地环境变量示例
+└── README.md
 ```
-private-gpt/
-├── private_gpt/          # 后端 Python 代码
-├── frontend/             # 前端 Vue.js 应用
-├── settings.yaml         # 默认配置文件
-├── pyproject.toml        # Python 依赖配置
-└── poetry.lock          # Poetry 锁定文件
-```
 
-## 环境要求
+## 配置文件说明
 
-- **Python**: 3.11.x
-- **Node.js**: 18.x 或更高版本
-- **Poetry**: Python 包管理工具
-- **npm**: Node.js 包管理工具
+当前版本暂不迁移根目录 `settings*.yaml`，因为 loader 按 `PGPT_SETTINGS_FOLDER + settings-{profile}.yaml` 读取。后续若迁移到 `config/profiles/`，需要先改 loader 并保留旧路径兼容。
 
-## 后端启动
+| 文件 | 用途 |
+| --- | --- |
+| `settings.yaml` | 默认配置，包含服务端口、CORS、存储、Postgres 连接占位变量 |
+| `settings-qwen.yaml` | Qwen / DashScope profile，配合 `PGPT_PROFILES=qwen` 使用 |
+| `settings-docker.yaml` | Docker 场景配置 |
+| `settings-ollama*.yaml` | Ollama 场景配置 |
+| `settings-test.yaml` | 测试 profile |
 
-### 1. 安装 Python 依赖
+## 快速启动
+
+### 1. 准备环境
+
+- Python 3.11
+- Node.js 18+
+- Poetry
+- PostgreSQL
+- 可访问 DashScope 的 Qwen API Key
+- 可选 Hugging Face token，用于下载 embedding 模型
+
+安装后端依赖：
 
 ```bash
-# 安装 Poetry（如果未安装）
-pip install poetry
-
-# 安装项目依赖
-poetry install
-
-# 安装特定功能的额外依赖（可选）
-poetry install --with ui                    # 包含 Gradio UI
-# poetry install --with llms-ollama          # 可选择包含 Ollama LLM 支持
-poetry install --with embeddings-huggingface # 包含 HuggingFace 嵌入模型
-poetry install --with vector-stores-qdrant  # 包含 Qdrant 向量数据库
-# 标准
 poetry install -E llms-openai-like -E embeddings-huggingface -E vector-stores-qdrant -E ui
-
-# Postgres 指标库与登录所需依赖
-poetry add psycopg2-binary
 ```
 
-### 2. 配置设置
-
-项目使用 `settings.yaml` 进行配置。主要配置项包括：
-
-```yaml
-server:
-  port: 8001
-  cors:
-    enabled: true
-    allow_origins: ["*"]
-
-llm:
-  mode: "ollama"  # 或 "llama-cpp", "openai", "azure-openai" 等
-
-embeddings:
-  mode: "ollama"  # 或 "huggingface", "openai" 等
-
-vectorstore:
-  database: "qdrant"  # 或 "postgres", "chroma", "milvus" 等
-```
-
-### 3. 启动前端开发服务器
-
-```bash
-# 方式 1: 使用 Poetry
-poetry run python -m private_gpt
-
-# 说明：默认 profile（settings.yaml）使用 llamacpp，本机必须存在 GGUF 模型文件（通常放在项目根目录的 models/ 下）。
-# 如果您使用千问（settings-qwen.yaml），推荐先编辑 scripts\run_backend_qwen.cmd 中的占位符：
-#   DASHSCOPE_API_KEY=<your_dashscope_api_key>
-#   HF_TOKEN=<your_huggingface_token>
-#   PGPT_AUTH_SECRET=<your_auth_secret>
-# 保存后直接运行：scripts\run_backend_qwen.cmd
-
-# 方式 2: 直接运行
-poetry run private-gpt
-
-# 方式 3: 使用 uvicorn
-poetry run uvicorn private_gpt.main:app --host 0.0.0.0 --port 8001
-```
-
-后端服务将在 `http://localhost:8001` 启动，API 文档可在 `http://localhost:8001/docs` 查看。
-
-## 数据库与登录（Postgres + RBAC）
-
-系统默认使用 JSON 指标库，如需启用 Postgres，请准备本地 Postgres 并设置以下环境变量：
-
-```bash
-set PGPT_INDICATOR_STORE=postgres
-set PGPT_AUTO_MIGRATE=1
-set PGPT_AUTH_SECRET=your-secret-key
-```
-
-默认演示账号（登录页可直接使用）：
-
-- 管理员：admin / admin123
-- 工作人员：staff / staff123
-- 领导：leader / leader123
-- 公众：public / public123
-
-如需手动初始化数据库脚本：
-
-```bash
-psql -d gov_rag -f db/schema_postgres.sql
-psql -d gov_rag -f db/seed.sql
-```
-
-## 前端启动
-
-### 1. 安装 Node.js 依赖
+安装前端依赖：
 
 ```bash
 cd frontend
@@ -121,78 +94,143 @@ npm install
 
 ### 2. 配置环境变量
 
-在 `frontend/` 目录下创建 `.env.development` 文件：
+复制 `.env.example` 并填入本地值，或在 shell 中设置同名变量。
 
-```env
-# Vue CLI 项目请使用 VUE_APP_* 前缀（VITE_* 仅适用于 Vite 项目）
-VUE_APP_API_BASE=http://localhost:8001/v1
-
-# （可选）保留 VITE_API_BASE 仅用于兼容历史配置
-VITE_API_BASE=http://localhost:8001/v1
+```bash
+PGPT_PROFILES=qwen
+DASHSCOPE_API_KEY=<your_dashscope_api_key>
+HF_TOKEN=<your_huggingface_token>
+PGPT_AUTH_SECRET=<your_auth_secret>
+PGPT_INDICATOR_STORE=postgres
+PGPT_AUTO_MIGRATE=1
+PGPT_POSTGRES_HOST=localhost
+PGPT_POSTGRES_PORT=5432
+PGPT_POSTGRES_DB=gov_rag
+PGPT_POSTGRES_USER=postgres
+PGPT_POSTGRES_PASSWORD=<your_postgres_password>
 ```
 
-### 3. 启动前端开发服务器
+Windows 用户也可以编辑 `scripts\run_backend_qwen.cmd` 中的占位符后直接启动。不要把真实 token 提交到 Git。
+
+### 3. 启动后端
+
+```bash
+poetry run python -m private_gpt
+```
+
+Windows + Qwen 快速启动：
+
+```bat
+scripts\run_backend_qwen.cmd
+```
+
+后端地址：
+
+- API: <http://localhost:8001>
+- Swagger: <http://localhost:8001/docs>
+
+### 4. 启动前端
 
 ```bash
 cd frontend
 npm run serve
 ```
 
-前端应用将在 `http://localhost:8080` 启动。
+前端地址：<http://localhost:8080>
 
-## 完整启动流程
+## 演示账号
 
-### 1. 启动后端
+以下账号仅用于本地演示。公开部署前必须修改密码、禁用默认账号，并替换 `PGPT_AUTH_SECRET`。
 
-```bash
-# 终端 1: 启动后端
-cd /path/to/private-gpt
-poetry install
-poetry install -E llms-openai-like -E embeddings-huggingface -E vector-stores-qdrant -E ui
+| 角色 | 用户名 | 密码 | 主要权限 |
+| --- | --- | --- | --- |
+| 管理员 | `admin` | `admin123` | 用户、文件、指标、删除与审计管理 |
+| 工作人员 | `staff` | `staff123` | 文件入库、指标处理、回答公众 |
+| 领导 | `leader` | `leader123` | 指标推进、审计查看、回答公众 |
+| 公众 | `public` | `public123` | 智能问答、浏览公开文件、评论与提问 |
 
-# （推荐）千问模型实例
-# 请先编辑 scripts\run_backend_qwen.cmd，将其中的占位符替换为您自己的密钥与认证配置，然后运行：
-scripts\run_backend_qwen.cmd
+## 数据库初始化
 
-# 或通过以下命令设置：
-#设置qwen的配置文件， 对应到了settings-qwen.yaml  修改settings-qwen的模型qwen3-30b-a3b-instruct-2507
-set PGPT_PROFILES=qwen  
-set DASHSCOPE_API_KEY=XXXXXXXXXXXXXXXXXXXXXXX  #千问百炼token
-set HF_TOKEN=XXXXXXXXXXXXXX        #huggingface的token下载embedding模型，如要使用ollma自动修改匹配的配置文件 
-set PGPT_INDICATOR_STORE=postgres
-set PGPT_AUTO_MIGRATE=1
-set PGPT_AUTH_SECRET=your-secret-key
-poetry run python -m private_gpt
-```
-
-### 2. 启动前端
+启用 `PGPT_AUTO_MIGRATE=1` 时，后端启动会自动执行 `db/schema_postgres.sql` 和 `db/seed.sql`。也可以手动执行：
 
 ```bash
-# 终端 2: 启动前端
-cd /path/to/private-gpt/frontend
-npm install
-npm run serve
+psql -d gov_rag -f db/schema_postgres.sql
+psql -d gov_rag -f db/seed.sql
 ```
 
-### 3. 访问应用
+Postgres 承担结构化数据职责：用户、角色、权限、政策文件元数据、文件与 RAG `doc_id` 映射、指标、责任单位、审计证据、评论、点赞、收藏和行为日志。Qdrant 承担非结构化文档块检索职责。
 
-- 前端界面: <http://localhost:8080>
-- 后端 API: <http://localhost:8001>
-- API 文档: <http://localhost:8001/docs>
+## 批量文档入库
 
-## 故障排除
+网页端上传适合演示和少量文件。本地已有大量政策文档时，可以放入 `documents/`，按目录推断元数据：
 
-### 常见问题
+```text
+documents/
+  2020/
+    区工信厅/
+      example-policy.pdf
+```
 
-1. **端口冲突**: 如果 8001 端口被占用，可以在 `settings.yaml` 中修改 `server.port`
+先 dry-run：
 
-2. **依赖安装失败**: 确保使用 Python 3.11.x 版本，并使用 Poetry 安装依赖
+```bash
+poetry run python scripts/ingest_folder.py documents --dry-run --infer-metadata
+```
 
-3. **前端无法连接后端**: 检查 CORS 配置和 API 基础 URL 设置
+确认后执行增量入库。真实入库前需要允许本地目录入库：
 
-4. **模型加载失败**: 检查 LLM 配置和模型文件路径
+```bash
+set LOCAL_INGESTION_ENABLED=true
+```
 
-### 日志查看
+然后执行：
 
-后端日志会直接输出到控制台，前端日志可在浏览器开发者工具中查看
----
+```bash
+poetry run python scripts/ingest_folder.py documents --infer-metadata
+```
+
+监听新增文件：
+
+```bash
+poetry run python scripts/ingest_folder.py documents --infer-metadata --watch
+```
+
+补偿同步已有向量库文档到 Postgres：
+
+```bash
+poetry run python scripts/ingest_folder.py documents --reconcile --infer-metadata
+```
+
+脚本会写入 `local_data/document_ingest_manifest.json`。该文件记录相对路径、文件 hash、`doc_ids`、`policy_id` 和同步状态，默认不上传 Git。
+
+## 测试
+
+后端基础测试：
+
+```bash
+poetry run pytest tests
+```
+
+前端构建：
+
+```bash
+cd frontend
+npm run build
+```
+
+上传前建议执行敏感信息检查：
+
+```bash
+git grep -n -E "(sk-[A-Za-z0-9_-]{20,}|h[f]_[A-Za-z0-9]{20,})"
+```
+
+## 路线图
+
+- 将当前根目录 profile 配置迁移到 `config/profiles/`，并在 loader 中保留旧路径 fallback。
+- 增强批量入库 UI，展示 manifest、partial success、reconcile 结果和失败详情。
+- 增加更完整的 CI：后端测试、前端构建、secret scan 和最小 API smoke test。
+- 对指标抽取、评论审核和问答原则做领域微调或更严格的结构化输出约束。
+
+## License
+
+This project is licensed under the Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).

@@ -24,11 +24,10 @@ def test_ingest_list_returns_something_after_ingestion(
 ) -> None:
     response_before = test_client.get("/v1/ingest/list")
     count_ingest_before = len(response_before.json()["data"])
-    with tempfile.NamedTemporaryFile("w", suffix=".txt") as test_file:
-        test_file.write("Foo bar; hello there!")
-        test_file.flush()
-        test_file.seek(0)
-        ingest_result = ingest_helper.ingest_file(Path(test_file.name))
+    with tempfile.TemporaryDirectory() as temp_dir:
+        test_file = Path(temp_dir) / "test.txt"
+        test_file.write_text("Foo bar; hello there!", encoding="utf-8")
+        ingest_result = ingest_helper.ingest_file(test_file)
     assert len(ingest_result.data) == 1, "The temp doc should have been ingested"
     response_after = test_client.get("/v1/ingest/list")
     count_ingest_after = len(response_after.json()["data"])

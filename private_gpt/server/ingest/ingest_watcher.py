@@ -4,6 +4,7 @@ from typing import Any
 
 from watchdog.events import (
     FileCreatedEvent,
+    FileDeletedEvent,
     FileModifiedEvent,
     FileSystemEvent,
     FileSystemEventHandler,
@@ -25,6 +26,10 @@ class IngestWatcher:
 
             def on_created(self, event: FileSystemEvent) -> None:
                 if isinstance(event, FileCreatedEvent):
+                    on_file_changed(Path(event.src_path))
+
+            def on_deleted(self, event: FileSystemEvent) -> None:
+                if isinstance(event, FileDeletedEvent):
                     on_file_changed(Path(event.src_path))
 
         event_handler = Handler()

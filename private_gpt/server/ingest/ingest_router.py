@@ -5,7 +5,10 @@ from pydantic import BaseModel, Field
 
 from private_gpt.server.ingest.ingest_service import IngestService
 from private_gpt.server.ingest.model import IngestedDoc
-from private_gpt.server.documents.policy_store import get_policy_store
+from private_gpt.server.ingest.sync import (
+    annotate_policy_sync_status,
+    sync_ingested_documents,
+)
 from private_gpt.server.utils.auth import authenticated
 from private_gpt.server.db.postgres import get_connection
 from private_gpt.server.utils.permissions import disallow_roles, require_roles
@@ -32,6 +35,15 @@ class IngestResponse(BaseModel):
     object: Literal["list"]
     model: Literal["private-gpt"]
     data: list[IngestedDoc]
+    sync_status: str | None = None
+    sync_error: str | None = None
+    synced_count: int = 0
+    doc_policy_ids: dict[str, str] = Field(default_factory=dict)
+
+
+class ReconcileIngestBody(BaseModel):
+    department: str | None = None
+    publish_year: int | None = None
 
 
 @ingest_router.post("/ingest", tags=["Ingestion"], deprecated=True)
@@ -69,16 +81,20 @@ def ingest_file(
     if file.filename is None:
         raise HTTPException(400, "No file name provided")
     ingested_documents = service.ingest_bin_data(file.filename, file.file)
-    try:
-        get_policy_store().sync_ingested_docs(
-            ingested_documents,
-            department=department,
-            publish_year=publish_year,
-        )
-    except Exception:
-        # Do not fail ingestion if metadata sync fails
-        pass
-    return IngestResponse(object="list", model="private-gpt", data=ingested_documents)
+    sync_result = sync_ingested_documents(
+        ingested_documents,
+        department=department,
+        publish_year=publish_year,
+    )
+    return IngestResponse(
+        object="list",
+        model="private-gpt",
+        data=annotate_policy_sync_status(ingested_documents),
+        sync_status=sync_result.sync_status,
+        sync_error=sync_result.sync_error,
+        synced_count=sync_result.synced_count,
+        doc_policy_ids=sync_result.doc_policy_ids,
+    )
 
 
 @ingest_router.post("/ingest/text", tags=["Ingestion"])
@@ -98,11 +114,16 @@ def ingest_text(request: Request, body: IngestTextBody) -> IngestResponse:
     if len(body.file_name) == 0:
         raise HTTPException(400, "No file name provided")
     ingested_documents = service.ingest_text(body.file_name, body.text)
-    try:
-        get_policy_store().sync_ingested_docs(ingested_documents)
-    except Exception:
-        pass
-    return IngestResponse(object="list", model="private-gpt", data=ingested_documents)
+    sync_result = sync_ingested_documents(ingested_documents)
+    return IngestResponse(
+        object="list",
+        model="private-gpt",
+        data=annotate_policy_sync_status(ingested_documents),
+        sync_status=sync_result.sync_status,
+        sync_error=sync_result.sync_error,
+        synced_count=sync_result.synced_count,
+        doc_policy_ids=sync_result.doc_policy_ids,
+    )
 
 
 @ingest_router.get("/ingest/list", tags=["Ingestion"])
@@ -114,7 +135,39 @@ def list_ingested(request: Request) -> IngestResponse:
     """
     service = request.state.injector.get(IngestService)
     ingested_documents = service.list_ingested()
-    return IngestResponse(object="list", model="private-gpt", data=ingested_documents)
+    return IngestResponse(
+        object="list",
+        model="private-gpt",
+        data=annotate_policy_sync_status(ingested_documents),
+    )
+
+
+@ingest_router.post(
+    "/ingest/reconcile",
+    tags=["Ingestion"],
+    dependencies=[Depends(require_roles(["admin", "staff"]))],
+)
+def reconcile_ingested(
+    request: Request,
+    body: ReconcileIngestBody | None = None,
+) -> IngestResponse:
+    """Compensate policy metadata rows for documents already present in RAG storage."""
+    service = request.state.injector.get(IngestService)
+    ingested_documents = service.list_ingested()
+    sync_result = sync_ingested_documents(
+        ingested_documents,
+        department=body.department if body else None,
+        publish_year=body.publish_year if body else None,
+    )
+    return IngestResponse(
+        object="list",
+        model="private-gpt",
+        data=annotate_policy_sync_status(ingested_documents),
+        sync_status=sync_result.sync_status,
+        sync_error=sync_result.sync_error,
+        synced_count=sync_result.synced_count,
+        doc_policy_ids=sync_result.doc_policy_ids,
+    )
 
 
 @ingest_router.delete(

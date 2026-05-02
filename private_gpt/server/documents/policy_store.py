@@ -6,6 +6,7 @@ import logging
 import os
 import re
 from datetime import date
+from pathlib import Path
 from typing import Iterable, Optional
 
 from private_gpt.server.db.postgres import get_connection
@@ -17,7 +18,8 @@ logger = logging.getLogger(__name__)
 def _strip_extension(file_name: str) -> str:
     if not file_name:
         return ""
-    return re.sub(r"\.[A-Za-z0-9]{1,6}$", "", file_name).strip() or file_name
+    display_name = Path(file_name).name
+    return re.sub(r"\.[A-Za-z0-9]{1,6}$", "", display_name).strip() or display_name
 
 
 def _guess_publish_date(file_name: str) -> date | None:
@@ -76,9 +78,10 @@ class PolicyStore:
         docs: Iterable[IngestedDoc],
         department: Optional[str] = None,
         publish_year: Optional[int] = None,
-    ) -> None:
+    ) -> dict[str, str]:
+        doc_policy_ids: dict[str, str] = {}
         if not self._enabled:
-            return
+            return doc_policy_ids
         by_file: dict[str, list[IngestedDoc]] = {}
         for doc in docs:
             meta = doc.doc_metadata or {}
@@ -120,7 +123,25 @@ class PolicyStore:
                             """,
                             (doc.doc_id, policy_id, page_label),
                         )
-        logger.info("Synced %d ingested docs into policy tables.", len(by_file))
+                        doc_policy_ids[doc.doc_id] = str(policy_id)
+        logger.info("Synced %d files into policy tables.", len(by_file))
+        return doc_policy_ids
+
+    def find_policy_ids_by_doc_ids(self, doc_ids: Iterable[str]) -> dict[str, str]:
+        ids = [str(doc_id) for doc_id in doc_ids if str(doc_id).strip()]
+        if not self._enabled or not ids:
+            return {}
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT doc_id, policy_id::text
+                    FROM policy_doc_refs
+                    WHERE doc_id = ANY(%s)
+                    """,
+                    (ids,),
+                )
+                return {str(doc_id): str(policy_id) for doc_id, policy_id in cur.fetchall()}
 
 
 def get_policy_store() -> PolicyStore:

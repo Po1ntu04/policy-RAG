@@ -202,6 +202,13 @@ export const ingestAPI = {
   // 删除文档
   async deleteDocument(docId) {
     return api.delete(`/ingest/${docId}`)
+  },
+
+  async reconcile(options = {}) {
+    return api.post('/ingest/reconcile', {
+      department: options.department || null,
+      publish_year: options.publishYear || null
+    })
   }
 }
 

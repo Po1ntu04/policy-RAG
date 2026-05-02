@@ -112,12 +112,12 @@ qdrant:
   path: local_data/private_gpt/qdrant
 
 postgres:
-  host: localhost
-  port: 5432
-  database: gov_rag
-  user: postgres
-  password: 050923
-  schema_name: private_gpt
+  host: ${PGPT_POSTGRES_HOST:localhost}
+  port: ${PGPT_POSTGRES_PORT:5432}
+  database: ${PGPT_POSTGRES_DB:gov_rag}
+  user: ${PGPT_POSTGRES_USER:postgres}
+  password: ${PGPT_POSTGRES_PASSWORD:postgres}
+  schema_name: ${PGPT_POSTGRES_SCHEMA:private_gpt}
 
 sagemaker:
   llm_endpoint_name: huggingface-pytorch-tgi-inference-2023-09-25-19-53-32-140
